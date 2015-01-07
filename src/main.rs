@@ -41,8 +41,7 @@ struct Chip8Unit {
     keypad: [u8; 16],
 }
 
-#[main]
-fn main() {
+fn init_sdl() {
     // Initialize SDL Video
     sdl::init([sdl::InitFlag::Video].as_slice());
 
@@ -56,6 +55,11 @@ fn main() {
         Ok(screen) => screen,
         Err(err) => panic!("Failed to set video mode: {}", err)
     };
+}
+
+fn main() {
+    // Initialize SDL
+    init_sdl();
 
     // SDL main loop
     'main : loop {
