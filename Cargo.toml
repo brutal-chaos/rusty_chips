@@ -1,0 +1,8 @@
+[package]
+
+name = "rusty_chips"
+version = "0.0.1"
+authors = ["Justin Noah <justinnoah@gmail.com>"]
+
+[dependencies.sdl]
+git = "https://github.com/brson/rust-sdl.git"

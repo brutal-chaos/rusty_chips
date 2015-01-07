@@ -1,0 +1,12 @@
+[root]
+name = "rusty_chips"
+version = "0.0.1"
+dependencies = [
+ "sdl 0.3.6 (git+https://github.com/brson/rust-sdl.git)",
+]
+
+[[package]]
+name = "sdl"
+version = "0.3.6"
+source = "git+https://github.com/brson/rust-sdl.git#2392dc99a011045300ba44cbd3b5bf87ef893ab0"
+
