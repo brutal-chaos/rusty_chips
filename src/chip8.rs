@@ -1,6 +1,9 @@
 use std::default::Default;
 
 pub struct Chip8 {
+    // Clear Display (SDL - black screen)
+    pub cls: bool,
+
     /*
      * 0x000-0x1FF - Chip 8 interpreter (contains font set in emu)
      * 0x050-0x0A0 - Used for the built in 4x5 pixel font set (0-F)
@@ -40,29 +43,24 @@ impl Default for Chip8 {
     #[inline]
     fn default() -> Chip8 {
         Chip8 {
+            // Let's clear the screen at start
+            cls: true,
             memory: [0u8; 4096],
-
             registers: [0u8; 16],
-
             i: 0u16,
-
             pc: 0x200u16,
-
             graphics: [0u8; 64*32],
-
             delay_timer: 0u8,
             sound_timer: 0u8,
-
             stack_pointer: 0u16,
             stack: [0u16; 16],
-
             keypad: [0u8; 16],
         }
     }
 }
 
 impl Chip8 {
-   fn cycle(&mut self) {
+   pub fn cycle(&mut self) {
         // fetch
         let opcode: u16 = ((self.memory[(self.pc as uint)] as u16) << 8
                            | (self.memory[(self.pc + 1) as uint] as u16));
