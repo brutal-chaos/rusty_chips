@@ -68,6 +68,11 @@ impl Chip8 {
         opcode = (opcode << 8) | lowbits as u16;
 
         // Decode
+        match opcode {
+            // Clear screen
+            0x00e0 => self.cls = true,
+            op @ _ => println!("Unknown opcode: {:X}", op),
+        }
         // Execute
         // Increment the counter
         self.pc += 2;
