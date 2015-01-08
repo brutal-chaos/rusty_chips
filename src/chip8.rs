@@ -106,6 +106,15 @@ impl Chip8 {
                     self.pc += 2;
                 }
             },
+            // 5xy0 -  Skip next instruction if Vx == Vy
+            op @ 0x5000 ... 0x5ff0 if op % 16  == 0 => {
+                let vx: u8 = ((op & 0x0f00) >> 8) as u8;
+                let vy: u8 = ((op & 0x00f0) >> 4) as u8;
+                if vx == vy {
+                    self.pc += 2;
+                }
+            },
+            // Unsupported
             op @ _ => println!("Unknown opcode: {:X}", op),
         }
         // Execute
