@@ -62,8 +62,10 @@ impl Default for Chip8 {
 impl Chip8 {
    pub fn cycle(&mut self) {
         // fetch
-        let opcode: u16 = ((self.memory[(self.pc as uint)] as u16) << 8
-                           | (self.memory[(self.pc + 1) as uint] as u16));
+        let highbits: u8 = self.memory[(self.pc as uint)];
+        let lowbits: u8 = self.memory[(self.pc + 1) as uint];
+        let mut opcode: u16 = highbits as u16;
+        opcode = (opcode << 8) | lowbits as u16;
 
         // Decode
         // Execute
