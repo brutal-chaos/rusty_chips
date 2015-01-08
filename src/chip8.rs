@@ -62,10 +62,15 @@ impl Default for Chip8 {
 }
 
 impl Chip8 {
-   fn cycle(&self) {
+   fn cycle(&mut self) {
         // fetch
+        let opcode: u16 = ((self.memory[(self.pc as uint)] as u16) << 8
+                           | (self.memory[(self.pc + 1) as uint] as u16));
+
         // Decode
         // Execute
+        // Increment the counter
+        self.pc += 2;
         // Update timers
     }
 }
