@@ -106,7 +106,7 @@ impl Chip8 {
                 // Set the pc to nnn
                 self.pc = nnn;
             },
-            // 3xkk - Skip next instruction if Vx == kk
+            // 3xkk - SE Vx, byte - Skip next instruction if Vx == kk
             op @ 0x3000 ... 0x3fff => {
                 let V: u8 = ((op & 0x0F00) >> 8) as u8;
                 let byte: u8 = (op & 0x00FF) as u8;
@@ -114,7 +114,7 @@ impl Chip8 {
                     self.pc += 2;
                 }
             },
-            // 4xkk - Skip next instruction if Vx != kk
+            // 4xkk - SNE Vx, byte - Skip next instruction if Vx != kk
             op @ 0x4000 ... 0x4fff => {
                 let V: u8 = ((op & 0x0F00) >> 8) as u8;
                 let byte: u8 = (op & 0x00FF) as u8;
@@ -122,7 +122,7 @@ impl Chip8 {
                     self.pc += 2;
                 }
             },
-            // 5xy0 -  Skip next instruction if Vx == Vy
+            // 5xy0 - SE Vx, Vy - Skip next instruction if Vx == Vy
             op @ 0x5000 ... 0x5ff0 if op % 16  == 0 => {
                 let vx: u8 = ((op & 0x0f00) >> 8) as u8;
                 let vy: u8 = ((op & 0x00f0) >> 4) as u8;
@@ -130,8 +130,89 @@ impl Chip8 {
                     self.pc += 2;
                 }
             },
+            // 6xkk - LD Vx, byte -  Set Vx = kk
+            op @ 0x6000 ... 0x6fff => {
+                self.registers[((op & 0x0f00) >> 8) as uint] = (op & 0x00ff) as u8;
+            },
+            // 7xkk - ADD Vx, byte -  Set Vx = Vx + kk
+            op @ 0x7000 ... 0x7fff => {
+                self.registers[((op & 0x0f00) >> 8) as uint] += (op & 0x00ff) as u8;
+            },
+            // 8xy0 - 8xye
+            op @ 0x8000 ... 0x8ffe => {
+                let x  =  (op & 0x000f) as uint;
+                let vy = ((op & 0x00f0) >> 4) as uint;
+                let vx = ((op & 0x0f00) >> 8) as uint;
+
+                match x {
+                    // 8xy0 - LD Vx, Vy - Set Vx = Vy.
+                    0 => self.registers[vx] = self.registers[vy],
+                    // 8xy1 - OR Vx, Vy - Set Vx = Vx OR Vy
+                    1 => self.registers[vx] = self.registers[vx] | self.registers[vy],
+                    // 8xy2 - AND Vx, Vy - Set Vx = Vx AND Vy
+                    2 => self.registers[vx] = self.registers[vx] & self.registers[vy],
+                    // 8xy3 - XOR Vx, Vy - Set Vx = Vx XOR Vy
+                    3 => self.registers[vx] = self.registers[vx] ^ self.registers[vy],
+                    // 8xy4 - ADD Vx, Vy - Set Vx = Vx + Vy, set VF = carry
+                    4 => {
+                        let added = self.registers[vx] + self.registers[vy];
+                        if added > 255 {
+                            self.registers[vx] = 0xff;
+                            self.registers[15] = 1;
+                        } else {
+                            self.registers[vx] = added;
+                            self.registers[15] = 0;
+                        }
+                    },
+                    // 8xy5 - SUB Vx, Vy - Set Vx = Vx - Vy, set VF = NOT borrow
+                    5 => {
+                        if self.registers[vx] > self.registers[vy] {
+                            self.registers[15] = 1;
+                        } else {
+                            self.registers[15] = 0;
+                        }
+                        self.registers[vx] -= self.registers[vy];
+                    },
+                    // 8xy6 - SHR Vx {, Vy} - Set Vx = Vx SHR 1
+                    6 => {
+                        if self.registers[vx] & 1 == 1 {
+                            self.registers[15] = 1;
+                        } else {
+                            self.registers[15] = 0;
+                        }
+                        self.registers[vx] /= 2;
+                    },
+                    // 8xy7 - SUBN Vx, Vy - Set Vx = Vy - Vx, set VF = NOT borrow
+                    7 => {
+                        if self.registers[vy] > self.registers[vx] {
+                            self.registers[15] = 1;
+                        } else {
+                            self.registers[15] = 0;
+                        }
+                        self.registers[vx] -= self.registers[vy];
+                    },
+                    // 8xyE - SHL Vx {, Vy} - Set Vx = Vx SHL 1
+                    14 => {
+                        if self.registers[vx] > 127 {
+                            self.registers[15] = 1;
+                        } else {
+                            self.registers[15] = 0;
+                        }
+                        self.registers[vx] *= 2;
+                    },
+                    _ => println!{"Unknown opcode: 0x{:X}", op},
+                }
+            },
+            // 9xy0 - SNE Vx, Vy - Skip next instruction if Vx != Vy
+            op @ 0x9000 ... 0x9ff0 if op % 16 == 0 => {
+                let vy = ((op & 0x00f0) >> 4) as uint;
+                let vx = ((op & 0x0f00) >> 8) as uint;
+                if self.registers[vx] != self.registers[vy] {
+                    self.pc += 2;
+                }
+            },
             // Unsupported
-            op @ _ => println!("Unknown opcode: {:X}", op),
+            op @ _ => println!("Unknown opcode: 0x{:X}", op),
         }
         // Execute
         // Increment the counter
