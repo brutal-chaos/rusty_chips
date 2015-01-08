@@ -71,6 +71,25 @@ impl Chip8 {
         match opcode {
             // Clear screen
             0x00e0 => self.cls = true,
+            // RET
+            0x00ee  => {
+                // Move program counter to the top of the stack
+                self.pc = self.stack[(self.stack_pointer as uint)];
+                // Decrement the stack pointer
+                self.stack_pointer -= 1
+            },
+            // 1nnn - JP addr - jump to nnn
+            op @ 0x1000 ... 0x1fff   =>  self.pc = op ^ 0x1000,
+            // 2nnn - CALL addr - call subroutine at nnn
+            op @ 0x2000 ... 0x2fff   => {
+                let nnn = op ^ 0x2000;
+                // Increment the stack pointer
+                self.stack_pointer += 1;
+                // Put the value of pc ontop of the stack
+                self.stack[self.stack_pointer as uint] = self.pc;
+                // Set the pc to nnn
+                self.pc = nnn;
+            },
             op @ _ => println!("Unknown opcode: {:X}", op),
         }
         // Execute
