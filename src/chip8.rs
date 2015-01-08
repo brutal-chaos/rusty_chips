@@ -90,6 +90,22 @@ impl Chip8 {
                 // Set the pc to nnn
                 self.pc = nnn;
             },
+            // 3xkk - Skip next instruction if Vx == kk
+            op @ 0x3000 ... 0x3fff => {
+                let V: u8 = ((op & 0x0F00) >> 8) as u8;
+                let byte: u8 = (op & 0x00FF) as u8;
+                if self.registers[V as uint] == byte {
+                    self.pc += 2;
+                }
+            },
+            // 4xkk - Skip next instruction if Vx != kk
+            op @ 0x4000 ... 0x4fff => {
+                let V: u8 = ((op & 0x0F00) >> 8) as u8;
+                let byte: u8 = (op & 0x00FF) as u8;
+                if self.registers[V as uint] != byte {
+                    self.pc += 2;
+                }
+            },
             op @ _ => println!("Unknown opcode: {:X}", op),
         }
         // Execute
