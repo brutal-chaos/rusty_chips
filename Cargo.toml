@@ -3,6 +3,9 @@
 name = "rusty_chips"
 version = "0.0.1"
 authors = ["Justin Noah <justinnoah@gmail.com>"]
+edition = "2021"
 
-[dependencies.sdl]
-git = "https://github.com/brson/rust-sdl.git"
+[dependencies]
+nuklear-rust = { path = "../nuklear-rust", version = "^0.7.0" }
+sdl2 = { version = "0.35" }
+tokio = { version = "1", features = ["full"] }
