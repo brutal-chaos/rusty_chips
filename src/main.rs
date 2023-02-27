@@ -23,9 +23,11 @@ struct Args {
     rom: Option<String>,
     #[arg(short, long, default_value = "1.76Mhz")]
     speed: Option<String>,
+    #[arg(short, long, default_value = "10")]
+    cycles: Option<usize>,
 }
 
-fn cli_args() -> (Vec<u8>, f64) {
+fn cli_args() -> (Vec<u8>, f64, usize) {
     // CLI Arguments
     let args = Args::parse();
     let rom: Vec<u8> = match args.rom.as_deref() {
@@ -41,18 +43,29 @@ fn cli_args() -> (Vec<u8>, f64) {
             rom
         }
     };
-    let mut cpu_speed: f64 = 0.0;
-    if let Some(speed) = args.speed.as_deref() {
-        cpu_speed = util::hz_to_secs(speed);
-    } else {
-        // Original COSMAC VIP Frequency
-        cpu_speed = util::hz_to_secs("1.76MHz");
-    }
-    (rom, cpu_speed)
+
+    let cpu_speed: f64 = {
+        if let Some(speed) = args.speed.as_deref() {
+            util::hz_to_secs(speed)
+        } else {
+            // Original COSMAC VIP Frequency
+            util::hz_to_secs("1.76MHz")
+        }
+    };
+
+    let cycles: usize = {
+        if let Some(count) = args.cycles {
+            count
+        } else {
+            14
+        }
+    };
+
+    (rom, cpu_speed, cycles)
 }
 
 fn main() {
-    let (rom, freq) = cli_args();
+    let (rom, freq, cycles) = cli_args();
 
     let rt = tokio::runtime::Runtime::new().unwrap();
 
@@ -65,7 +78,15 @@ fn main() {
         )
     });
     let _chip8_handle = rt.block_on(async {
-        chip8::Chip8Handle::new(freq, Some(rom), input.clone(), video.clone(), fuse.clone()).await
+        chip8::Chip8Handle::new(
+            freq,
+            Some(rom),
+            input.clone(),
+            video.clone(),
+            fuse.clone(),
+            cycles,
+        )
+        .await
     });
 
     gui::gui_loop(

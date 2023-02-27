@@ -6,7 +6,9 @@ use tokio::time::{interval, MissedTickBehavior};
 use crate::{counter, fuse, input, vram};
 
 #[derive(Debug)]
-pub struct Chip8Message {}
+pub enum Chip8Message {
+    ToggleExec,
+}
 
 #[allow(non_snake_case)]
 pub struct Chip8 {
@@ -33,6 +35,8 @@ pub struct Chip8 {
     // The chip8 stack has 16 levels
     sp: u8,
 
+    running: bool,
+
     // 60hz counter channels
     sound_timer: counter::CounterHandle,
     delay_timer: counter::CounterHandle,
@@ -54,6 +58,8 @@ impl Chip8 {
             pc: 0x200u16,
             sp: 0u8,
 
+            running: true,
+
             delay_timer: counter::CounterHandle::new(),
             sound_timer: counter::CounterHandle::new(),
 
@@ -64,29 +70,27 @@ impl Chip8 {
 
     pub async fn cycle(&mut self) {
         // fetch
-        if self.pc >= 4096 {
+        if self.pc >= 0x1000
+        /* max 4096 */
+        {
             self.pc = 0x200;
         }
         let pc = self.pc as usize;
-        let highbits: u8 = self.memory[pc];
-        let lowbits: u8 = self.memory[(pc + 1)];
+        let highbits: u16 = self.memory[pc] as u16;
+        let lowbits: u16 = self.memory[(pc + 1)] as u16;
 
         // Encode
-        let mut opcode: u16 = highbits as u16;
-        opcode = (opcode << 8) | lowbits as u16;
+        let mut opcode: u16 = highbits;
+        opcode = (opcode << 8) | lowbits;
 
         // Decode/Execute
-        // println!("Opcode: 0x{:0>4X}", opcode);
+        println!("PC[0x{:0>4X}]: 0x{:0>4X}", self.pc, opcode);
         match opcode {
-            0x00E0 => {
-                for y in 0..32 {
-                    for x in 0..64 {
-                        self.video.set_pixel(x, y, false).await;
-                    }
-                }
-            }
+            0x00E0 => self.video.clear_screen().await,
             0x00EE => self.ret(),
-            0x1000..=0x1FFF => self.pc = 0x0FFF & opcode,
+            0x1000..=0x1FFF => {
+                self.pc = (opcode & 0x0FFF) - 2;
+            }
             0x2000..=0x2FFF => {
                 let addr = 0x0FFF & opcode;
                 let lowbits = (0x00FF & self.pc) as u8;
@@ -95,7 +99,7 @@ impl Chip8 {
                 let sp = self.sp as usize;
                 self.memory[sp] = highbits;
                 self.memory[sp + 1] = lowbits;
-                self.pc = addr;
+                self.pc = addr - 2;
             }
             0x3000..=0x3FFF => {
                 let x: u8 = ((0x0F00 & opcode) >> 8) as u8;
@@ -116,8 +120,8 @@ impl Chip8 {
                 if ending != 0x0 {
                     unknown_opcode(opcode);
                 } else {
-                    let vx = ((0x0F00 >> 8) as u8) as usize;
-                    let vy = ((0x00F0 >> 4) as u8) as usize;
+                    let vx = ((0x0F00 & opcode) >> 8) as usize;
+                    let vy = ((0x00F0 & opcode) >> 4) as usize;
                     if self.vS[vx] == self.vS[vy] {
                         self.pc += 2;
                     }
@@ -203,10 +207,10 @@ impl Chip8 {
                 }
             }
             0xA000..=0xAFFF => {
-                self.i = 0xFFF & opcode;
+                self.i = opcode & 0x0FFF;
             }
             0xB000..=0xBFFF => {
-                self.pc = (0x0FFF & opcode) + (self.vS[0] as u16);
+                self.pc = (0xFFF & opcode) + (self.vS[0] as u16);
             }
             0xC000..=0xCFFF => {
                 let x = (((0x0F00 & opcode) >> 8) as u8) as usize;
@@ -217,8 +221,8 @@ impl Chip8 {
             }
             0xD000..=0xDFFF => {
                 // Decode locations and values*
-                let vx = self.vS[(((0xF00 & opcode) >> 8) as u8) as usize] as usize;
-                let vy = self.vS[(((0x0F0 & opcode) >> 4) as u8) as usize] as usize;
+                let vx = self.vS[((0xF00 & opcode) >> 8) as usize] as usize;
+                let vy = self.vS[((0x0F0 & opcode) >> 4) as usize] as usize;
                 let n = 0xF & (opcode as usize);
                 let mut sprite = Vec::with_capacity(n);
                 for i in 0..n {
@@ -325,6 +329,9 @@ impl Chip8 {
     }
 
     async fn draw(self: &mut Self, vx: usize, vy: usize, bytes: &Vec<u8>) {
+        if !self.running {
+            return;
+        }
         let (sx, sy) = self.video.get_screen_size().await;
         let tx = vx % sx;
         let ty = vy % sy;
@@ -336,16 +343,27 @@ impl Chip8 {
         ];
 
         for (row, b) in bytes.iter().enumerate() {
-            let y = (row + ty) % 32;
-            for (col, mask) in masks.iter().enumerate() {
-                let x = (tx + col) % 64;
-                let cur_value = self.video.get_pixel(x, y).await;
-                let new_value = cur_value ^ ((mask & b) >= 1);
-                if cur_value != new_value {
-                    self.vS[15] = 1;
-                    collision = 1;
+            let y = (row + ty) % sy;
+            if y < sy {
+                for (col, mask) in masks.iter().enumerate() {
+                    let x = (tx + col) % sx;
+                    let bmask = mask & b;
+                    let cur_value = self.video.get_pixel(x, y).await;
+                    if bmask > 0 {
+                        if cur_value {
+                            self.video.set_pixel(x, y, false).await;
+                            collision = 1;
+                        } else {
+                            self.video.set_pixel(x, y, true).await;
+                        }
+                    }
+                    if (x + 1) == sx {
+                        break;
+                    }
                 }
-                self.video.set_pixel(x, y, new_value).await;
+                if (y + 1) == sy {
+                    break;
+                }
             }
         }
 
@@ -354,7 +372,7 @@ impl Chip8 {
 }
 
 fn unknown_opcode(opcode: u16) {
-    println!("Unknown opcode: {:X}", opcode);
+    println!("Unknown opcode: 0x{:0<4X}", opcode);
 }
 
 pub struct Chip8Handle {}
@@ -366,9 +384,10 @@ impl Chip8Handle {
         input: input::InputHandle,
         video: vram::VRAMHandle,
         fuse: fuse::FuseHandle,
+        cycles: usize,
     ) -> Self {
         let c8 = init_chip8(&rom, input, video).await;
-        tokio::spawn(async move { run_chip8(freq, fuse, c8).await });
+        tokio::spawn(async move { run_chip8(freq, fuse, c8, cycles).await });
 
         Self {}
     }
@@ -415,16 +434,22 @@ pub async fn init_chip8(
     }
     // vm.memory[0x3] = 0xA;
     vm.memory[0x3] = 0x0;
+    vm.pc = 0x200;
     vm
 }
 
-async fn run_chip8(frequency: f64, fuse: fuse::FuseHandle, mut chip: Chip8) {
+async fn run_chip8(frequency: f64, fuse: fuse::FuseHandle, mut chip: Chip8, cs: usize) {
     println!("Start Chip8 Task");
+    let mut cycles = cs;
     let mut ival = interval(Duration::from_secs_f64(frequency));
     ival.set_missed_tick_behavior(MissedTickBehavior::Skip);
     while fuse.alive() {
         ival.tick().await;
         chip.cycle().await;
+        cycles -= 1;
+        if cycles == 0 {
+            break;
+        }
     }
     println!("Exiting Chip8 Task");
 }

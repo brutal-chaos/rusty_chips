@@ -81,6 +81,13 @@ impl VRAM {
                 respond_to.send(self[(x, y)]).await.unwrap()
             }
             VRAMMessage::SetPixel { x, y, value } => self[(x, y)] = value,
+            VRAMMessage::Clear => {
+                for y in 0..self.height {
+                    for x in 0..self.width {
+                        self[(x, y)] = false
+                    }
+                }
+            }
         }
     }
 }
@@ -120,6 +127,7 @@ pub enum VRAMMessage {
         y: usize,
         value: bool,
     },
+    Clear,
 }
 
 #[derive(Clone, Debug)]
@@ -176,6 +184,11 @@ impl VRAMHandle {
 
     pub async fn set_pixel(&self, x: usize, y: usize, value: bool) {
         let msg = VRAMMessage::SetPixel { x, y, value };
+        let _ = self.sender.send(msg).await;
+    }
+
+    pub async fn clear_screen(&self) {
+        let msg = VRAMMessage::Clear;
         let _ = self.sender.send(msg).await;
     }
 }
