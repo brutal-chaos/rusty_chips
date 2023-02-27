@@ -1,45 +1,78 @@
 /// Copyright 2015-2023, Justin Noah <justinnoah at gmail.com>, All Rights Reserved
+use std::fs::File;
+use std::io::Read;
+
 use clap::Parser;
 
-use tokio::fs::File;
-use tokio::io::AsyncReadExt;
-use tokio::sync::watch;
+use fuse::FuseHandle;
+use input::InputHandle;
+use vram::{ScreenSize, VRAMHandle};
 
 pub(crate) mod chip8;
+pub(crate) mod counter;
+pub(crate) mod fuse;
 pub(crate) mod gui;
+pub(crate) mod input;
+pub(crate) mod util;
+pub(crate) mod vram;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
     #[arg(short, long)]
-    rom: String,
+    rom: Option<String>,
+    #[arg(short, long, default_value = "1.76Mhz")]
+    speed: Option<String>,
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn cli_args() -> (Vec<u8>, f64) {
     // CLI Arguments
     let args = Args::parse();
-    let mut rom_file: File = File::open(args.rom).await?;
-    let mut rom_bytes: Vec<u8> = Vec::new();
-    rom_file.read_to_end(&mut rom_bytes).await?;
+    let rom: Vec<u8> = match args.rom.as_deref() {
+        Some(path) => {
+            let mut r = File::open(path).unwrap();
+            let mut v = Vec::new();
+            r.read_to_end(&mut v).unwrap();
+            v
+        }
+        None => {
+            let roms = util::test_roms();
+            let rom = roms[0].clone();
+            rom
+        }
+    };
+    let mut cpu_speed: f64 = 0.0;
+    if let Some(speed) = args.speed.as_deref() {
+        cpu_speed = util::hz_to_secs(speed);
+    } else {
+        // Original COSMAC VIP Frequency
+        cpu_speed = util::hz_to_secs("1.76MHz");
+    }
+    (rom, cpu_speed)
+}
+
+fn main() {
+    let (rom, freq) = cli_args();
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
 
     // Comms Channels and async task prep
-    let (send_alive, recv_alive) = watch::channel(true);
-    let (send_input, recv_input) = watch::channel(0u8 as char);
-    let (send_video, recv_video) = watch::channel([[false; 64]; 32]);
-    let (send_vdclr, recv_vdclr) = watch::channel(false);
-    let disp_task = tokio::spawn(gui::gui_loop(
-        send_alive, send_input, recv_video, recv_vdclr,
-    ));
-    let cpu_task = tokio::spawn(chip8::chip8_runner(
-        recv_alive,
-        recv_input,
-        send_video,
-        send_vdclr,
-        Some(rom_bytes),
-    ));
+    let (video, input, fuse) = rt.block_on(async {
+        (
+            VRAMHandle::new(ScreenSize::S),
+            InputHandle::new(),
+            FuseHandle::new(),
+        )
+    });
+    let _chip8_handle = rt.block_on(async {
+        chip8::Chip8Handle::new(freq, Some(rom), input.clone(), video.clone(), fuse.clone()).await
+    });
 
-    // Off to the races!
-    let _ = tokio::join!(disp_task, cpu_task);
-    Ok(())
+    gui::gui_loop(
+        fuse.clone(),
+        input.clone(),
+        video.clone(),
+        ScreenSize::S,
+        rt.handle(),
+    );
 }

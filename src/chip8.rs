@@ -1,8 +1,12 @@
 /// Copyright 2015-2023, Justin Noah <justinnoah at gmail.com>, All Rights Reserved
 use std::time::Duration;
 
-use tokio::sync::watch;
 use tokio::time::{interval, MissedTickBehavior};
+
+use crate::{counter, fuse, input, vram};
+
+#[derive(Debug)]
+pub struct Chip8Message {}
 
 #[allow(non_snake_case)]
 pub struct Chip8 {
@@ -11,72 +15,57 @@ pub struct Chip8 {
      * 0x050-0x0A0 - Used for the built in 4x5 pixel font set (0-F)
      * 0x200-0xFFF - Program ROM and work RAM
      */
-    pub memory: [u8; 4096],
-
-    pub vram: [[bool; 64]; 32],
+    memory: [u8; 4096],
 
     /*
      * CPU registers: The Chip 8 has 15 8-bit general purpose registers
      * named V0,V1 up to VE. The 16th register is used  for the ‘carry flag’.
      */
-    pub vS: [u8; 16],
+    vS: [u8; 16],
 
     // Index register
-    pub i: u16, // u12
+    i: u16, // u12
 
     // program counter
-    pub pc: u16, // u12
-
-    // 60hz counter channels
-    delay_tx: Option<tokio::sync::watch::Sender<u8>>,
-    delay_rx: Option<tokio::sync::watch::Receiver<u8>>,
-    sound_tx: Option<tokio::sync::watch::Sender<u8>>,
-    sound_rx: Option<tokio::sync::watch::Receiver<u8>>,
+    pc: u16, // u12
 
     // Stack needed to jump to certain addresses or call subroutines
     // The chip8 stack has 16 levels
-    pub sp: u8,
+    sp: u8,
 
-    // Screen Details
-    pub screen_width: usize,
-    pub screen_height: usize,
+    // 60hz counter channels
+    sound_timer: counter::CounterHandle,
+    delay_timer: counter::CounterHandle,
 
     // Keypad buttons, pressed or not
-    keypad: [bool; 16],
+    input: input::InputHandle,
 
-    // Comms channels
-    input: Option<watch::Receiver<char>>,
-    video: Option<watch::Sender<[[bool; 64]; 32]>>,
+    // Video RAM, for SDL or other library to read from in a thread safe manner
+    video: vram::VRAMHandle,
 }
 
 impl Chip8 {
-    pub fn new() -> Chip8 {
+    pub async fn new(input: input::InputHandle, video: vram::VRAMHandle) -> Chip8 {
         Chip8 {
             memory: [0u8; 4096],
-            vram: [[false; 64]; 32],
             vS: [0u8; 16],
 
             i: 0x50u16,
             pc: 0x200u16,
-            delay_tx: None,
-            delay_rx: None,
-            sound_tx: None,
-            sound_rx: None,
             sp: 0u8,
 
-            screen_height: 64,
-            screen_width: 32,
-            keypad: [false; 16],
+            delay_timer: counter::CounterHandle::new(),
+            sound_timer: counter::CounterHandle::new(),
 
-            input: None,
-            video: None,
+            input,
+            video,
         }
     }
 
-    pub fn cycle(&mut self) {
+    pub async fn cycle(&mut self) {
         // fetch
         if self.pc >= 4096 {
-            self.pc = 0;
+            self.pc = 0x200;
         }
         let pc = self.pc as usize;
         let highbits: u8 = self.memory[pc];
@@ -87,12 +76,12 @@ impl Chip8 {
         opcode = (opcode << 8) | lowbits as u16;
 
         // Decode/Execute
-        println!("Opcode: {:X}", opcode);
+        // println!("Opcode: 0x{:0>4X}", opcode);
         match opcode {
             0x00E0 => {
                 for y in 0..32 {
                     for x in 0..64 {
-                        self.vram[y][x] = false;
+                        self.video.set_pixel(x, y, false).await;
                     }
                 }
             }
@@ -228,19 +217,15 @@ impl Chip8 {
             }
             0xD000..=0xDFFF => {
                 // Decode locations and values*
-                let vx = self.vS[(((0x0F00 & opcode) >> 8) as u8) as usize];
-                let vy = self.vS[(((0x00F0 & opcode) >> 4) as u8) as usize];
-                let n = (0x000F & opcode) as u8;
-                let mut sprite = Vec::with_capacity(n as usize);
+                let vx = self.vS[(((0xF00 & opcode) >> 8) as u8) as usize] as usize;
+                let vy = self.vS[(((0x0F0 & opcode) >> 4) as u8) as usize] as usize;
+                let n = 0xF & (opcode as usize);
+                let mut sprite = Vec::with_capacity(n);
                 for i in 0..n {
-                    sprite.push(self.memory[(self.i + i as u16) as usize])
+                    sprite.push(self.memory[(self.i as usize + i)])
                 }
 
-                self.draw(vx, vy, &sprite);
-                if self.video.is_some() {
-                    self.video.as_ref().unwrap().send(self.vram).unwrap();
-                    println!("Sending video bools");
-                }
+                self.draw(vx, vy, &sprite).await
             }
             0xE000..=0xEFFF => {
                 // Register where keycode is stored
@@ -250,19 +235,19 @@ impl Chip8 {
                 match nn {
                     0x9E => {
                         // Keycode itself, should be between 0-F
-                        let key = self.vS[x as usize] as usize;
+                        let key = self.vS[x as usize];
 
                         // if keycode is pressed
-                        if self.keypad[key] {
+                        if self.input.pressed(key).await {
                             self.pc += 2;
                         }
                     }
                     0xA1 => {
                         // Keycode itself, should be between 0-F
-                        let key = self.vS[x as usize] as usize;
+                        let key = self.vS[x as usize];
 
                         // if keycode is pressed
-                        if !self.keypad[key] {
+                        if !self.input.pressed(key).await {
                             self.pc += 2;
                         }
                     }
@@ -274,31 +259,17 @@ impl Chip8 {
                 let nn = 0x00FF & opcode;
                 match nn {
                     0x7 => {
-                        if self.delay_rx.is_some() {
-                            self.vS[x] = *self.delay_rx.as_ref().unwrap().borrow();
-                        }
+                        self.vS[x] = self.delay_timer.get().await;
                     }
                     0xA => {
                         println!("Waiting for input");
-                        if self.input.is_some() {
-                            let ipt = self.input.as_ref().expect("dafuq?");
-
-                            let mut latest: char = *ipt.borrow();
-                            while latest == (0u8 as char) {
-                                latest = *ipt.borrow();
-                            }
-                            self.keypad[latest as usize] = true;
-                        }
+                        todo!();
                     }
                     0x15 => {
-                        if self.delay_tx.is_some() {
-                            self.delay_tx.as_ref().unwrap().send(self.vS[x]).unwrap();
-                        }
+                        self.delay_timer.set(self.vS[x]).await;
                     }
                     0x18 => {
-                        if self.sound_tx.is_some() {
-                            self.sound_tx.as_ref().unwrap().send(self.vS[x]).unwrap();
-                        }
+                        self.sound_timer.set(self.vS[x]).await;
                     }
                     0x1E => self.i += self.vS[x] as u16,
                     0x29 => self.i = 0x50 + 5 * (self.vS[x] as u16),
@@ -353,29 +324,32 @@ impl Chip8 {
         self.sp -= 2;
     }
 
-    fn draw(self: &mut Self, vx: u8, vy: u8, bytes: &Vec<u8>) {
-        let tx = (vx % 64) as usize;
-        let ty = (vy % 32) as usize;
+    async fn draw(self: &mut Self, vx: usize, vy: usize, bytes: &Vec<u8>) {
+        let (sx, sy) = self.video.get_screen_size().await;
+        let tx = vx % sx;
+        let ty = vy % sy;
+        let mut collision: u8 = 0;
 
         let masks: [u8; 8] = [
             0b10000000, 0b01000000, 0b00100000, 0b00010000, 0b00001000, 0b00000100, 0b00000010,
             0b00000001,
         ];
 
-        for (ix, b) in bytes.iter().enumerate() {
-            let y = ix + ty;
-            for (z, mask) in masks.iter().enumerate() {
-                let x = tx + z;
-                if x < 64 && y < 32 {
-                    let cur_value = self.vram[y][x];
-                    let new_value = cur_value ^ ((mask & b) >= 1);
-                    if cur_value != new_value {
-                        self.vS[15] = 1;
-                    }
-                    self.vram[y][x] = new_value;
+        for (row, b) in bytes.iter().enumerate() {
+            let y = (row + ty) % 32;
+            for (col, mask) in masks.iter().enumerate() {
+                let x = (tx + col) % 64;
+                let cur_value = self.video.get_pixel(x, y).await;
+                let new_value = cur_value ^ ((mask & b) >= 1);
+                if cur_value != new_value {
+                    self.vS[15] = 1;
+                    collision = 1;
                 }
+                self.video.set_pixel(x, y, new_value).await;
             }
         }
+
+        self.vS[15] = collision;
     }
 }
 
@@ -383,16 +357,29 @@ fn unknown_opcode(opcode: u16) {
     println!("Unknown opcode: {:X}", opcode);
 }
 
-pub(crate) fn init_chip8(
-    rom: Option<Vec<u8>>,
-    input: watch::Receiver<char>,
-    video: watch::Sender<[[bool; 64]; 32]>,
-    vdclr: watch::Sender<bool>,
+pub struct Chip8Handle {}
+
+impl Chip8Handle {
+    pub async fn new(
+        freq: f64,
+        rom: Option<Vec<u8>>,
+        input: input::InputHandle,
+        video: vram::VRAMHandle,
+        fuse: fuse::FuseHandle,
+    ) -> Self {
+        let c8 = init_chip8(&rom, input, video).await;
+        tokio::spawn(async move { run_chip8(freq, fuse, c8).await });
+
+        Self {}
+    }
+}
+
+pub async fn init_chip8(
+    rom: &Option<Vec<u8>>,
+    input: input::InputHandle,
+    video: vram::VRAMHandle,
 ) -> Chip8 {
-    let mut vm = Chip8::new();
-    vm.input = Some(input);
-    vm.video = Some(video);
-    vm.vdclr = Some(vdclr);
+    let mut vm = Chip8::new(input, video).await;
 
     // Fontset
     let fontset = [
@@ -426,75 +413,18 @@ pub(crate) fn init_chip8(
         }
         None => {}
     }
-
+    // vm.memory[0x3] = 0xA;
+    vm.memory[0x3] = 0x0;
     vm
 }
 
-#[allow(dead_code)]
-pub async fn chip8_dec_timer(
-    alive: tokio::sync::watch::Receiver<bool>,
-    outval: tokio::sync::watch::Sender<u8>,
-    inval: tokio::sync::watch::Receiver<u8>,
-) {
-    println!("Start Dec Timer Task");
-    let mut ival = interval(Duration::from_secs_f64(0.01667));
+async fn run_chip8(frequency: f64, fuse: fuse::FuseHandle, mut chip: Chip8) {
+    println!("Start Chip8 Task");
+    let mut ival = interval(Duration::from_secs_f64(frequency));
     ival.set_missed_tick_behavior(MissedTickBehavior::Skip);
-    ival.tick().await;
-    while *alive.borrow() {
+    while fuse.alive() {
         ival.tick().await;
-        let cur = *inval.borrow();
-        if cur > 0 {
-            outval.send(cur - 1).unwrap_or(());
-        }
+        chip.cycle().await;
     }
-    println!("Exiting Dec Timer Task");
-}
-
-pub async fn chip8_runner(
-    alive: tokio::sync::watch::Receiver<bool>,
-    input: tokio::sync::watch::Receiver<char>,
-    video: tokio::sync::watch::Sender<[[bool; 64]; 32]>,
-    vdclr: tokio::sync::watch::Sender<bool>,
-    rom: Option<Vec<u8>>,
-) {
-    println!("Start chip8_runner Task");
-    let mut chip = init_chip8(rom, input, video, vdclr);
-
-    let (delay_tx_chip, delay_rx_timer) = watch::channel(0);
-    let (delay_tx_timer, delay_rx_chip) = watch::channel(0);
-    let (sound_tx_chip, sound_rx_timer) = watch::channel(0);
-    let (sound_tx_timer, sound_rx_chip) = watch::channel(0);
-    let delay_alive = alive.clone();
-    let delay_timer =
-        tokio::spawn(
-            async move { chip8_dec_timer(delay_alive, delay_tx_timer, delay_rx_timer).await },
-        );
-    let sound_alive = alive.clone();
-    let sound_timer =
-        tokio::spawn(
-            async move { chip8_dec_timer(sound_alive, sound_tx_timer, sound_rx_timer).await },
-        );
-    chip.delay_tx = Some(delay_tx_chip);
-    chip.delay_rx = Some(delay_rx_chip);
-    chip.sound_tx = Some(sound_tx_chip);
-    chip.sound_rx = Some(sound_rx_chip);
-    let runner_alive = alive.clone();
-    let chip_clock = tokio::spawn(async move { runner(runner_alive, &mut chip).await });
-    let _ = tokio::join!(delay_timer, sound_timer, chip_clock);
-    println!("Exiting chip8_runner Task");
-}
-
-async fn runner(alive: tokio::sync::watch::Receiver<bool>, chip: &mut Chip8) {
-    println!("Start Runner Task");
-    let mut ival = interval(Duration::from_secs_f64(2.083e-8));
-    ival.set_missed_tick_behavior(MissedTickBehavior::Skip);
-    let mut counter = 100;
-    while *alive.borrow()
-    /* && counter > 0 */
-    {
-        ival.tick().await;
-        chip.cycle();
-        //counter -= 1;
-    }
-    println!("Exiting Runner Task");
+    println!("Exiting Chip8 Task");
 }
