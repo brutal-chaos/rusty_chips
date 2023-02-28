@@ -405,7 +405,6 @@ impl Chip8Handle {
         input: input::InputHandle,
         video: vram::VRAMHandle,
         fuse: fuse::FuseHandle,
-        cycles: usize,
     ) -> Self {
         let sound_timer = counter::CounterHandle::new();
         let delay_timer = counter::CounterHandle::new();
@@ -418,7 +417,7 @@ impl Chip8Handle {
             delay_timer.clone(),
             recv,
         );
-        tokio::spawn(async move { run_chip8(freq, fuse, c8, cycles).await });
+        tokio::spawn(async move { run_chip8(freq, fuse, c8).await });
 
         Self {
             sound_timer,
@@ -477,9 +476,8 @@ pub fn init_chip8(
     vm
 }
 
-async fn run_chip8(frequency: f64, fuse: fuse::FuseHandle, mut c8: Chip8, cs: usize) {
+async fn run_chip8(frequency: f64, fuse: fuse::FuseHandle, mut c8: Chip8) {
     debug!("Start Chip8 Task");
-    let mut _cycles = cs;
     let mut ival = interval(Duration::from_secs_f64(frequency));
     ival.set_missed_tick_behavior(MissedTickBehavior::Skip);
     while fuse.alive() {

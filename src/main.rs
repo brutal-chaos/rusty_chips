@@ -25,11 +25,9 @@ struct Args {
     rom: Option<String>,
     #[arg(short, long, default_value = "1.76Mhz")]
     speed: Option<String>,
-    #[arg(short, long, default_value = "10")]
-    cycles: Option<usize>,
 }
 
-fn cli_args() -> (Vec<u8>, f64, usize) {
+fn cli_args() -> (Vec<u8>, f64) {
     // CLI Arguments
     let args = Args::parse();
     let rom: Vec<u8> = match args.rom.as_deref() {
@@ -54,21 +52,13 @@ fn cli_args() -> (Vec<u8>, f64, usize) {
         }
     };
 
-    let cycles: usize = {
-        if let Some(count) = args.cycles {
-            count
-        } else {
-            14
-        }
-    };
-
-    (rom, cpu_speed, cycles)
+    (rom, cpu_speed)
 }
 
 fn main() {
     simple_logger::init_with_env().unwrap();
 
-    let (rom, freq, cycles) = cli_args();
+    let (rom, freq) = cli_args();
 
     let rt = tokio::runtime::Runtime::new().unwrap();
 
@@ -77,14 +67,7 @@ fn main() {
         let video = VRAMHandle::new(ScreenSize::S);
         let input = InputHandle::new();
         let fuse = FuseHandle::new();
-        let chip8 = Chip8Handle::new(
-            freq,
-            Some(rom),
-            input.clone(),
-            video.clone(),
-            fuse.clone(),
-            cycles,
-        );
+        let chip8 = Chip8Handle::new(freq, Some(rom), input.clone(), video.clone(), fuse.clone());
         let audio_timer = chip8.sound_timer.clone();
         (video, input, fuse, chip8, audio_timer)
     });
