@@ -1,4 +1,5 @@
 /// Copyright 2015-2023, Justin Noah <justinnoah at gmail.com>, All Rights Reserved
+use log::debug;
 use tokio::sync::broadcast;
 
 #[derive(Clone, Debug)]
@@ -44,8 +45,8 @@ impl FuseHandle {
     }
 
     pub fn blow(&self) {
-        println!("FUSE BLOWN!");
         let _ = self.send.send(FuseMessage::Blow);
+        debug!("FUSE BLOWN!");
     }
 
     pub fn alive(&self) -> bool {

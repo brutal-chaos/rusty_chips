@@ -67,6 +67,8 @@ fn cli_args() -> (Vec<u8>, f64, usize) {
 }
 
 fn main() {
+    simple_logger::init_with_env().unwrap();
+
     let (rom, freq, cycles) = cli_args();
 
     let rt = tokio::runtime::Runtime::new().unwrap();

@@ -1,6 +1,7 @@
 /// Copyright 2015-2023, Justin Noah <justinnoah at gmail.com>, All Rights Reserved
 use std::time::Duration;
 
+use log::{debug, warn};
 use tokio::sync::mpsc;
 use tokio::time::{interval, MissedTickBehavior};
 
@@ -101,7 +102,7 @@ impl Chip8 {
             opcode = (opcode << 8) | lowbits;
 
             // Decode/Execute
-            println!("PC[0x{:0>4X}]: 0x{:0>4X}", self.pc, opcode);
+            debug!("PC[0x{:0>4X}]: 0x{:0>4X}", self.pc, opcode);
             match opcode {
                 0x00E0 => self.video.clear_screen().await,
                 0x00EE => self.ret(),
@@ -283,8 +284,7 @@ impl Chip8 {
                             self.vS[x] = self.delay_timer.get().await;
                         }
                         0xA => {
-                            println!("Waiting for input");
-                            todo!();
+                            todo!("Waiting for input");
                         }
                         0x15 => {
                             self.delay_timer.set(self.vS[x]).await;
@@ -390,7 +390,7 @@ impl Chip8 {
 }
 
 fn unknown_opcode(opcode: u16) {
-    println!("Unknown opcode: 0x{:0<4X}", opcode);
+    warn!("Unknown opcode: 0x{:0<4X}", opcode);
 }
 
 pub struct Chip8Handle {
@@ -483,7 +483,7 @@ pub fn init_chip8(
 }
 
 async fn run_chip8(frequency: f64, fuse: fuse::FuseHandle, mut c8: Chip8, cs: usize) {
-    println!("Start Chip8 Task");
+    debug!("Start Chip8 Task");
     let mut cycles = cs;
     let mut ival = interval(Duration::from_secs_f64(frequency));
     ival.set_missed_tick_behavior(MissedTickBehavior::Skip);
@@ -496,5 +496,5 @@ async fn run_chip8(frequency: f64, fuse: fuse::FuseHandle, mut c8: Chip8, cs: us
             _ => (),
         }
     }
-    println!("Exiting Chip8 Task");
+    debug!("Exiting Chip8 Task");
 }

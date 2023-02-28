@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::ops::{Index, IndexMut};
 use std::time::Duration;
 
+use log::debug;
 use sdl2::audio::AudioStatus;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -148,7 +149,7 @@ pub fn gui_loop(
     screen_size: ScreenSize,
     rt: &tokio::runtime::Handle,
 ) {
-    println!("Start GUI");
+    debug!("Start GUI");
     // TODO: Make configurable
     let screen_size_px = (1280usize, 720usize);
     // Hardcoded Keys, TODO: Make configurable
@@ -271,5 +272,5 @@ pub fn gui_loop(
         canvas.present();
         ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }
-    println!("Exiting GUI Task");
+    debug!("Exiting GUI Task");
 }
