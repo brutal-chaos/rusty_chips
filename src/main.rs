@@ -1,19 +1,4 @@
-/*
- * Copyright 2015 Justin Noah <justinnoah at gmail.com>
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
+/// Copyright 2015-2023, Justin Noah <justinnoah at gmail.com>, All Rights Reserved
 // externs
 extern crate sdl;
 
@@ -38,16 +23,22 @@ fn init_sdl() {
     sdl::wm::set_caption("rusty_chips a Chip8 emulator", "rusty_chips");
 
     // Initialize the screen
-    let screen = match sdl::video::set_video_mode(800, 600, 32,
-                                                  [SurfaceFlag::HWSurface].as_slice(),
-                                                  [VideoFlag::DoubleBuf].as_slice()) {
+    let screen = match sdl::video::set_video_mode(
+        800,
+        600,
+        32,
+        [SurfaceFlag::HWSurface].as_slice(),
+        [VideoFlag::DoubleBuf].as_slice(),
+    ) {
         Ok(screen) => screen,
-        Err(err) => panic!("Failed to set video mode: {}", err)
+        Err(err) => panic!("Failed to set video mode: {}", err),
     };
 }
 
 fn init_chip8() -> chip8::Chip8 {
-    let mut vm = Chip8 { ..Default::default() };
+    let mut vm = Chip8 {
+        ..Default::default()
+    };
 
     // Fontset
     let fontset = [
@@ -66,7 +57,7 @@ fn init_chip8() -> chip8::Chip8 {
         0xF0, 0x80, 0x80, 0x80, 0xF0, // C
         0xE0, 0x90, 0x90, 0x90, 0xE0, // D
         0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
-        0xF0, 0x80, 0xF0, 0x80, 0x80  // F
+        0xF0, 0x80, 0xF0, 0x80, 0x80, // F
     ];
 
     for c in range(0, fontset.len()) {
@@ -84,15 +75,13 @@ fn main() {
     init_sdl();
 
     // SDL main loop
-    'main : loop {
-        'event : loop {
+    'main: loop {
+        'event: loop {
             match sdl::event::poll_event() {
                 Event::Quit => break 'main,
                 Event::None => break 'event,
-                Event::Key (k,_,_,_)
-                    if k == Key::Escape
-                        => break 'main,
-                    _ => {}
+                Event::Key(k, _, _, _) if k == Key::Escape => break 'main,
+                _ => {}
             }
         }
     }
