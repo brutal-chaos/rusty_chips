@@ -77,25 +77,3 @@ impl CounterHandle {
         let _ = self.sender.send(msg).await;
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tokio::time::sleep;
-
-    #[test]
-    fn test_counter() {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async {
-            let counter = CounterHandle::new();
-            println!("Counter: {:?}", counter);
-            println!("Counter: {}", &counter.get().await);
-            counter.set(170).await;
-            println!("Counter: {}", &counter.get().await);
-            println!("Counter: {}", &counter.get().await);
-            println!("Counter: {}", &counter.get().await);
-            sleep(Duration::from_millis(50)).await;
-            println!("Counter: {}", &counter.get().await);
-        });
-    }
-}

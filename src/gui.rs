@@ -10,6 +10,7 @@ use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 
 use crate::audio::init_sdl_audio;
+use crate::chip8::Chip8Handle;
 use crate::counter::CounterHandle;
 use crate::fuse::FuseHandle;
 use crate::input::InputHandle;
@@ -143,6 +144,7 @@ pub fn gui_loop(
     input: InputHandle,
     video: VRAMHandle,
     sound_timer: CounterHandle,
+    c8: Chip8Handle,
     screen_size: ScreenSize,
     rt: &tokio::runtime::Handle,
 ) {
@@ -206,6 +208,10 @@ pub fn gui_loop(
                     fuse.blow();
                     break 'running;
                 }
+                Event::KeyDown {
+                    keycode: Some(Keycode::M),
+                    ..
+                } => rt.block_on(async { c8.toggle_pause().await }),
                 Event::KeyDown {
                     keycode: Some(key), ..
                 } => {

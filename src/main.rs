@@ -72,7 +72,7 @@ fn main() {
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     // Comms Channels and async task prep
-    let (video, input, fuse, _chip8, audio) = rt.block_on(async {
+    let (video, input, fuse, chip8, audio) = rt.block_on(async {
         let video = VRAMHandle::new(ScreenSize::S);
         let input = InputHandle::new();
         let fuse = FuseHandle::new();
@@ -88,5 +88,5 @@ fn main() {
         (video, input, fuse, chip8, audio_timer)
     });
 
-    gui::gui_loop(fuse, input, video, audio, ScreenSize::S, rt.handle());
+    gui::gui_loop(fuse, input, video, audio, chip8, ScreenSize::S, rt.handle());
 }
