@@ -4,10 +4,12 @@ use std::io::Read;
 
 use clap::Parser;
 
+use chip8::Chip8Handle;
 use fuse::FuseHandle;
 use input::InputHandle;
 use vram::{ScreenSize, VRAMHandle};
 
+pub(crate) mod audio;
 pub(crate) mod chip8;
 pub(crate) mod counter;
 pub(crate) mod fuse;
@@ -70,30 +72,21 @@ fn main() {
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     // Comms Channels and async task prep
-    let (video, input, fuse) = rt.block_on(async {
-        (
-            VRAMHandle::new(ScreenSize::S),
-            InputHandle::new(),
-            FuseHandle::new(),
-        )
-    });
-    let _chip8_handle = rt.block_on(async {
-        chip8::Chip8Handle::new(
+    let (video, input, fuse, _chip8, audio) = rt.block_on(async {
+        let video = VRAMHandle::new(ScreenSize::S);
+        let input = InputHandle::new();
+        let fuse = FuseHandle::new();
+        let chip8 = Chip8Handle::new(
             freq,
             Some(rom),
             input.clone(),
             video.clone(),
             fuse.clone(),
             cycles,
-        )
-        .await
+        );
+        let audio_timer = chip8.sound_timer.clone();
+        (video, input, fuse, chip8, audio_timer)
     });
 
-    gui::gui_loop(
-        fuse.clone(),
-        input.clone(),
-        video.clone(),
-        ScreenSize::S,
-        rt.handle(),
-    );
+    gui::gui_loop(fuse, input, video, audio, ScreenSize::S, rt.handle());
 }

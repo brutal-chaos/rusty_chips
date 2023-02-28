@@ -13,9 +13,9 @@ pub enum Chip8Message {
 #[allow(non_snake_case)]
 pub struct Chip8 {
     /*
-     * 0x000-0x1FF - Chip 8 interpreter (contains font set in emu)
+     * 0x000-0x1FF - Space for the original Chip 8 interpreter and currently, fontsets
      * 0x050-0x0A0 - Used for the built in 4x5 pixel font set (0-F)
-     * 0x200-0xFFF - Program ROM and work RAM
+     * 0x200-0xFFF - Program binary and work RAM
      */
     memory: [u8; 4096],
 
@@ -49,7 +49,12 @@ pub struct Chip8 {
 }
 
 impl Chip8 {
-    pub async fn new(input: input::InputHandle, video: vram::VRAMHandle) -> Chip8 {
+    pub fn new(
+        input: input::InputHandle,
+        video: vram::VRAMHandle,
+        sound_timer: counter::CounterHandle,
+        delay_timer: counter::CounterHandle,
+    ) -> Chip8 {
         Chip8 {
             memory: [0u8; 4096],
             vS: [0u8; 16],
@@ -60,9 +65,8 @@ impl Chip8 {
 
             running: true,
 
-            delay_timer: counter::CounterHandle::new(),
-            sound_timer: counter::CounterHandle::new(),
-
+            delay_timer,
+            sound_timer,
             input,
             video,
         }
@@ -375,10 +379,13 @@ fn unknown_opcode(opcode: u16) {
     println!("Unknown opcode: 0x{:0<4X}", opcode);
 }
 
-pub struct Chip8Handle {}
+pub struct Chip8Handle {
+    pub sound_timer: counter::CounterHandle,
+    pub delay_timer: counter::CounterHandle,
+}
 
 impl Chip8Handle {
-    pub async fn new(
+    pub fn new(
         freq: f64,
         rom: Option<Vec<u8>>,
         input: input::InputHandle,
@@ -386,19 +393,26 @@ impl Chip8Handle {
         fuse: fuse::FuseHandle,
         cycles: usize,
     ) -> Self {
-        let c8 = init_chip8(&rom, input, video).await;
+        let sound_timer = counter::CounterHandle::new();
+        let delay_timer = counter::CounterHandle::new();
+        let c8 = init_chip8(&rom, input, video, sound_timer.clone(), delay_timer.clone());
         tokio::spawn(async move { run_chip8(freq, fuse, c8, cycles).await });
 
-        Self {}
+        Self {
+            sound_timer,
+            delay_timer,
+        }
     }
 }
 
-pub async fn init_chip8(
+pub fn init_chip8(
     rom: &Option<Vec<u8>>,
     input: input::InputHandle,
     video: vram::VRAMHandle,
+    sound: counter::CounterHandle,
+    delay: counter::CounterHandle,
 ) -> Chip8 {
-    let mut vm = Chip8::new(input, video).await;
+    let mut vm = Chip8::new(input, video, sound, delay);
 
     // Fontset
     let fontset = [

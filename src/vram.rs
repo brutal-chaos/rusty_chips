@@ -138,7 +138,7 @@ pub struct VRAMHandle {
 
 impl VRAMHandle {
     pub fn new(screen_size: ScreenSize) -> Self {
-        let (sender, receiver) = mpsc::channel(1);
+        let (sender, receiver) = mpsc::channel(10);
         let vram = match screen_size {
             ScreenSize::L => VRAM::new_large(receiver),
             ScreenSize::S => VRAM::new_small(receiver),
@@ -159,7 +159,7 @@ impl VRAMHandle {
     }
 
     pub async fn get(&self) -> Memory {
-        let (send, mut recv) = mpsc::channel(1);
+        let (send, mut recv) = mpsc::channel(10);
         let msg = VRAMMessage::Get { respond_to: send };
         let _ = self.sender.send(msg).await;
         loop {

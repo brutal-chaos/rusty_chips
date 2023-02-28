@@ -3,11 +3,14 @@ use std::collections::HashMap;
 use std::ops::{Index, IndexMut};
 use std::time::Duration;
 
+use sdl2::audio::AudioStatus;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 
+use crate::audio::init_sdl_audio;
+use crate::counter::CounterHandle;
 use crate::fuse::FuseHandle;
 use crate::input::InputHandle;
 use crate::vram::{ScreenSize, VRAMHandle};
@@ -139,6 +142,7 @@ pub fn gui_loop(
     fuse: FuseHandle,
     input: InputHandle,
     video: VRAMHandle,
+    sound_timer: CounterHandle,
     screen_size: ScreenSize,
     rt: &tokio::runtime::Handle,
 ) {
@@ -167,6 +171,8 @@ pub fn gui_loop(
 
     let sdl_context = sdl2::init().unwrap();
     let video_sub = sdl_context.video().unwrap();
+    let (_, audio_playback) = init_sdl_audio(&sdl_context);
+
     let window = video_sub
         .window(
             "Rusty Chips",
@@ -188,6 +194,8 @@ pub fn gui_loop(
 
     'running: loop {
         canvas.clear();
+
+        // Handle input
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit { .. }
@@ -218,6 +226,7 @@ pub fn gui_loop(
             }
         }
 
+        // Update Video
         let vram = rt.block_on(async { video.get().await });
         for x in 0..panel.width {
             for y in 0..panel.height {
@@ -229,6 +238,29 @@ pub fn gui_loop(
                 canvas.fill_rect(panel[(x, y)]).unwrap();
             }
         }
+
+        // Update Audio
+        rt.block_on(async {
+            let status = audio_playback.status();
+            let count: u8 = sound_timer.get().await;
+            if count > 0 {
+                match status {
+                    AudioStatus::Paused | AudioStatus::Stopped => {
+                        // Start playback
+                        audio_playback.resume();
+                    }
+                    AudioStatus::Playing => (),
+                }
+            } else {
+                match status {
+                    AudioStatus::Paused | AudioStatus::Stopped => (),
+                    AudioStatus::Playing => {
+                        // Stop playback
+                        audio_playback.pause();
+                    }
+                }
+            }
+        });
 
         canvas.present();
         ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));

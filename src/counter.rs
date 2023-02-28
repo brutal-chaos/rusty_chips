@@ -58,7 +58,7 @@ pub struct CounterHandle {
 
 impl CounterHandle {
     pub fn new() -> Self {
-        let (sender, recv) = mpsc::channel(8);
+        let (sender, recv) = mpsc::channel(10);
         let actor = Counter::new(recv);
         tokio::spawn(run_counter(actor));
 

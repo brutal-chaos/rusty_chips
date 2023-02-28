@@ -70,7 +70,7 @@ pub struct InputHandle {
 
 impl InputHandle {
     pub fn new() -> Self {
-        let (sender, recv) = mpsc::channel(8);
+        let (sender, recv) = mpsc::channel(10);
         let actor = Input::new(recv);
         tokio::spawn(run_input(actor));
 
