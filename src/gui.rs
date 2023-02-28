@@ -18,10 +18,10 @@ use crate::input::InputHandle;
 use crate::vram::{ScreenSize, VRAMHandle};
 
 #[allow(non_camel_case_types)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 enum Pixels {
-    l([[Rect; 128]; 64]),
-    s([[Rect; 64]; 32]),
+    l(Box<[[Rect; 128]; 64]>),
+    s(Box<[[Rect; 64]; 32]>),
 }
 
 #[allow(non_snake_case)]
@@ -50,7 +50,7 @@ impl Pixels {
                 panic!("expected vec of len {}, but found {}", 64, v.len())
             })
         };
-        Pixels::l(mem)
+        Pixels::l(Box::new(mem))
     }
 
     fn S(pixel_width: usize, pixel_height: usize) -> Self {
@@ -77,7 +77,7 @@ impl Pixels {
                 panic!("expected vec of len {}, but found {}", 32, v.len())
             })
         };
-        Pixels::s(mem)
+        Pixels::s(Box::new(mem))
     }
 }
 

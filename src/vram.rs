@@ -3,6 +3,8 @@ use std::ops::{Index, IndexMut};
 
 use tokio::sync::mpsc;
 
+// TODO: Remove this warning when SuperChip8 is ready
+#[allow(dead_code)]
 #[derive(Copy, Clone, Debug)]
 pub enum ScreenSize {
     L,
@@ -10,20 +12,20 @@ pub enum ScreenSize {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub enum Memory {
-    l([[bool; 128]; 64]),
-    s([[bool; 64]; 32]),
+    l(Box<[[bool; 128]; 64]>),
+    s(Box<[[bool; 64]; 32]>),
 }
 
 #[allow(non_snake_case)]
 impl Memory {
     fn L() -> Self {
-        Memory::l([[false; 128]; 64])
+        Memory::l(Box::new([[false; 128]; 64]))
     }
 
     fn S() -> Self {
-        Memory::s([[false; 64]; 32])
+        Memory::s(Box::new([[false; 64]; 32]))
     }
 }
 
@@ -47,6 +49,7 @@ impl IndexMut<(usize, usize)> for Memory {
     }
 }
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Debug)]
 pub struct VRAM {
     width: usize,
@@ -76,7 +79,7 @@ impl VRAM {
 
     async fn handle_message(&mut self, msg: VRAMMessage) {
         match msg {
-            VRAMMessage::Get { respond_to } => respond_to.send(self.mem).await.unwrap(),
+            VRAMMessage::Get { respond_to } => respond_to.send(self.mem.clone()).await.unwrap(),
             VRAMMessage::GetPixel { x, y, respond_to } => {
                 respond_to.send(self[(x, y)]).await.unwrap()
             }

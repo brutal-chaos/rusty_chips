@@ -327,26 +327,25 @@ impl Chip8 {
         }
     }
 
-    fn sp_addr(self: &Self) -> u16 {
+    fn sp_addr(&self) -> u16 {
         let sp: usize = self.sp as usize;
         let highbits: u8 = self.memory[sp];
         let lowbits: u8 = self.memory[sp + 1];
         let mut address: u16 = highbits as u16;
         address <<= 8;
         address |= lowbits as u16;
-        let result = address;
 
-        result
+        address
     }
 
-    fn ret(self: &mut Self) {
+    fn ret(&mut self) {
         // Sets PC to the address at the top of the stack, then subtracts 1 from the stack
         // pointer
         self.pc = self.sp_addr();
         self.sp -= 2;
     }
 
-    async fn draw(self: &mut Self, vx: usize, vy: usize, bytes: &Vec<u8>) {
+    async fn draw(&mut self, vx: usize, vy: usize, bytes: &[u8]) {
         if !self.running {
             return;
         }
@@ -464,15 +463,11 @@ pub fn init_chip8(
         0xF0, 0x80, 0xF0, 0x80, 0x80, // F
     ];
 
-    for c in 0..fontset.len() {
-        vm.memory[0x50 + c] = fontset[c];
-    }
+    vm.memory[0x50..(0x50 + fontset.len())].copy_from_slice(&fontset);
 
     match rom {
         Some(x) => {
-            for d in 0..x.len() {
-                vm.memory[0x200 + d] = x[d];
-            }
+            vm.memory[0x200..(0x200 + x.len())].copy_from_slice(x);
         }
         None => {}
     }
@@ -484,16 +479,15 @@ pub fn init_chip8(
 
 async fn run_chip8(frequency: f64, fuse: fuse::FuseHandle, mut c8: Chip8, cs: usize) {
     debug!("Start Chip8 Task");
-    let mut cycles = cs;
+    let mut _cycles = cs;
     let mut ival = interval(Duration::from_secs_f64(frequency));
     ival.set_missed_tick_behavior(MissedTickBehavior::Skip);
     while fuse.alive() {
         ival.tick().await;
         c8.cycle().await;
 
-        match c8.exec.try_recv() {
-            Ok(msg) => c8.handle_message(msg),
-            _ => (),
+        if let Ok(msg) = c8.exec.try_recv() {
+            c8.handle_message(msg)
         }
     }
     debug!("Exiting Chip8 Task");

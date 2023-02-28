@@ -41,8 +41,7 @@ fn cli_args() -> (Vec<u8>, f64, usize) {
         }
         None => {
             let roms = util::test_roms();
-            let rom = roms[0].clone();
-            rom
+            roms[0].clone()
         }
     };
 

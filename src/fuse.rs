@@ -14,17 +14,15 @@ struct Fuse {
 }
 
 impl Fuse {
-    fn handle_message(&self, msg: FuseMessage) {}
+    #[allow(dead_code)]
+    fn handle_message(&self, _msg: FuseMessage) {}
 }
 
 async fn run_fuse(mut fuse: Fuse) {
     loop {
         let _msg = fuse.recv.recv().await;
         match _msg {
-            Ok(msg) => match msg {
-                FuseMessage::Blow => break,
-                _ => continue,
-            },
+            Ok(FuseMessage::Blow) => break,
             _ => continue,
         }
     }
@@ -50,9 +48,6 @@ impl FuseHandle {
     }
 
     pub fn alive(&self) -> bool {
-        match self.send.send(FuseMessage::Alive) {
-            Ok(_) => true,
-            Err(_) => false,
-        }
+        self.send.send(FuseMessage::Alive).is_ok()
     }
 }
