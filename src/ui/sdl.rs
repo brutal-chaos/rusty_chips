@@ -60,12 +60,17 @@ pub fn gui_loop(
     ]);
 
     // TODO: Make configurable
-    let screen_size_px = (1280usize, 720usize);
+    let xf: f32 = 1280.0;
+    let yf: f32 = 720.0;
+    let xu: usize = 1280;
+    let yu: usize = 720;
+    let screen_size_pxu = (xu, yu);
+    let _screen_size_pxf = (xf, yf);
 
     // TODO: Add SuperChip8 support too!
     let panel = match screen_size {
-        ScreenSize::L => PixelPanel::new_large(screen_size_px.0, screen_size_px.1),
-        ScreenSize::S => PixelPanel::new_small(screen_size_px.0, screen_size_px.1),
+        ScreenSize::L => PixelPanel::new_large(screen_size_pxu.0, screen_size_pxu.1),
+        ScreenSize::S => PixelPanel::new_small(screen_size_pxu.0, screen_size_pxu.1),
     };
 
     let sdl_context = sdl2::init().unwrap();
@@ -78,8 +83,8 @@ pub fn gui_loop(
     let window = video_sub
         .window(
             "Rusty Chips",
-            screen_size_px.0 as u32,
-            screen_size_px.1 as u32,
+            screen_size_pxu.0 as u32,
+            screen_size_pxu.1 as u32,
         )
         .position_centered()
         .opengl()
@@ -89,7 +94,13 @@ pub fn gui_loop(
     window.gl_make_current(&gl_context).unwrap();
     window.subsystem().gl_set_swap_interval(1).unwrap();
 
-    let mut canvas = window.into_canvas().build().unwrap();
+    let mut canvas = window
+        .into_canvas()
+        .present_vsync()
+        .accelerated()
+        .target_texture()
+        .build()
+        .unwrap();
 
     let gl = glow_context(canvas.window());
 
@@ -103,32 +114,28 @@ pub fn gui_loop(
     let mut renderer = AutoRenderer::initialize(gl, &mut imgui).unwrap();
 
     let mut event_pump = sdl_context.event_pump().unwrap();
-    canvas.set_draw_color(Color::BLUE);
+    canvas.set_draw_color(Color::BLACK);
     canvas.clear();
     canvas.present();
 
-    let mut show_menu = false;
+    let mut menu_state = menus::MenuState::default();
     'running: loop {
         // Handle input
         for event in event_pump.poll_iter() {
             platform.handle_event(&mut imgui, &event);
 
             match event {
-                Event::Quit { .. }
-                | Event::KeyDown {
-                    keycode: Some(Keycode::Escape),
-                    ..
-                } => {
+                Event::Quit { .. } => {
                     fuse.blow();
                     break 'running;
                 }
                 Event::KeyDown {
-                    keycode: Some(Keycode::M),
+                    keycode: Some(Keycode::Escape),
                     ..
                 } => {
                     // draw menu
                     rt.block_on(async { c8.toggle_pause().await });
-                    show_menu = !show_menu;
+                    menu_state.show_menu = !&menu_state.show_menu;
                 }
                 Event::KeyDown {
                     keycode: Some(key), ..
@@ -162,7 +169,6 @@ pub fn gui_loop(
                 canvas.fill_rect(panel[(x, y)]).unwrap();
             }
         }
-
         // Update Audio
         rt.block_on(async {
             let status = audio_playback.status();
@@ -186,27 +192,28 @@ pub fn gui_loop(
             }
         });
 
-        canvas.present();
-        if show_menu {
+        unsafe {
+            let _ = sdl2::sys::SDL_RenderFlush(canvas.raw());
+        }
+        if menu_state.show_menu {
             // draw menu
             platform.prepare_frame(&mut imgui, canvas.window(), &event_pump);
             let ui = imgui.new_frame();
-            menus::main_menu(&ui, fuse.clone());
+            menus::main_menu(ui, &mut menu_state, fuse.clone());
             let draw_data = imgui.render();
 
-            match renderer.render(draw_data) {
-                Ok(_) => (),
-                Err(er) => debug!("renderer ERROR: {}", er),
-            };
-            canvas.window().gl_swap_window();
+            renderer
+                .render(draw_data)
+                .unwrap_or(debug!("renderer ERROR."));
         }
+        canvas.window().gl_swap_window();
 
         // Check fuse
         if !fuse.alive() {
             break 'running;
         }
 
-        std::thread::sleep(std::time::Duration::from_secs_f64(0.00001));
+        // std::thread::sleep(std::time::Duration::from_secs_f64(0.00001));
     }
     debug!("Exiting GUI Task");
 }

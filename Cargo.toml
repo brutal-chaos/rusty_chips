@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 clap = { version = "4.1", features = ["derive"] }
 glow = { version = "0.10" }
-imgui = { version = "0.10" }
+imgui = { version = "0.10" , features = ["tables-api"] }
 imgui-glow-renderer = { version = "0.10" }
 imgui-sdl2-support = { version = "0.10" }
 log = { version = "0.4" }
@@ -24,4 +24,4 @@ sdl = []
 
 [profile.release]
 debug = true
-opt-level = "s"
+opt-level = 2

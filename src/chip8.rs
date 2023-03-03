@@ -2,7 +2,7 @@
 use std::time::Duration;
 use std::vec::Vec;
 
-use log::{debug, warn};
+use log::{debug, trace, warn};
 use tokio::sync::mpsc;
 use tokio::time::{interval, MissedTickBehavior};
 
@@ -493,7 +493,7 @@ pub fn init_chip8(
 }
 
 async fn run_chip8(frequency: f64, fuse: fuse::FuseHandle, mut c8: Chip8) {
-    debug!("Start Chip8 Task");
+    trace!("Start Chip8 Task");
     let mut ival = interval(Duration::from_secs_f64(frequency));
     ival.set_missed_tick_behavior(MissedTickBehavior::Skip);
     while fuse.alive() {
@@ -504,5 +504,5 @@ async fn run_chip8(frequency: f64, fuse: fuse::FuseHandle, mut c8: Chip8) {
             c8.handle_message(msg)
         }
     }
-    debug!("Exiting Chip8 Task");
+    trace!("Exiting Chip8 Task");
 }
