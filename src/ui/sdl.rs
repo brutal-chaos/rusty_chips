@@ -118,7 +118,7 @@ pub fn gui_loop(
     canvas.clear();
     canvas.present();
 
-    let mut menu_state = menus::MenuState::default();
+    let menu_state = menus::MenuState::default();
     'running: loop {
         // Handle input
         for event in event_pump.poll_iter() {
@@ -135,7 +135,8 @@ pub fn gui_loop(
                 } => {
                     // draw menu
                     rt.block_on(async { c8.toggle_pause().await });
-                    menu_state.show_menu = !&menu_state.show_menu;
+                    let mut show_menu_handle = menu_state.show_menu.write().unwrap();
+                    *show_menu_handle = !*show_menu_handle;
                 }
                 Event::KeyDown {
                     keycode: Some(key), ..
@@ -195,16 +196,15 @@ pub fn gui_loop(
         unsafe {
             let _ = sdl2::sys::SDL_RenderFlush(canvas.raw());
         }
-        if menu_state.show_menu {
+        if *menu_state.show_menu.read().unwrap() {
             // draw menu
             platform.prepare_frame(&mut imgui, canvas.window(), &event_pump);
             let ui = imgui.new_frame();
-            menus::main_menu(ui, &mut menu_state, fuse.clone());
+            menus::main_menu(ui, &menu_state, fuse.clone());
             let draw_data = imgui.render();
 
-            renderer
-                .render(draw_data)
-                .unwrap_or(debug!("renderer ERROR."));
+            // Failures are ok
+            renderer.render(draw_data).unwrap_or(());
         }
         canvas.window().gl_swap_window();
 

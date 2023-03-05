@@ -2,7 +2,7 @@
 use std::time::Duration;
 use std::vec::Vec;
 
-use log::{debug, trace, warn};
+use log::{trace, warn};
 use tokio::sync::mpsc;
 use tokio::time::{interval, MissedTickBehavior};
 
@@ -120,7 +120,7 @@ impl Chip8 {
             opcode = (opcode << 8) | lowbits;
 
             // Decode/Execute
-            debug!("PC[0x{:0>4X}]: 0x{:0>4X}", self.pc, opcode);
+            trace!("PC[0x{:0>4X}]: 0x{:0>4X}", self.pc, opcode);
             match opcode {
                 0x00E0 => self.video.clear_screen().await,
                 0x00EE => self.ret(),
