@@ -1,5 +1,6 @@
 /// Copyright 2015-2023, Justin Noah <justinnoah at gmail.com>, All Rights Reserved
 use std::time::Duration;
+use std::vec::Vec;
 
 use log::{debug, warn};
 use tokio::sync::mpsc;
@@ -10,6 +11,7 @@ use crate::{counter, fuse, input, vram};
 #[derive(Debug)]
 pub enum Chip8Message {
     ToggleExec,
+    LoadROM(Vec<u8>),
 }
 
 #[allow(non_snake_case)]
@@ -79,9 +81,25 @@ impl Chip8 {
         }
     }
 
+    pub fn load_rom(&mut self, rom: &Vec<u8>) {
+        self.load_bytes_at(rom, 0x200);
+        self.reset_pc();
+    }
+
+    pub fn load_bytes_at(&mut self, bytes: &Vec<u8>, at: usize) {
+        self.memory[at..(at + bytes.len())].copy_from_slice(bytes);
+    }
+
+    pub fn reset_pc(&mut self) {
+        self.pc = 0x200;
+    }
+
     pub fn handle_message(&mut self, msg: Chip8Message) {
         match msg {
             Chip8Message::ToggleExec => self.running = !self.running,
+            Chip8Message::LoadROM(rom) => {
+                self.load_rom(&rom);
+            }
         }
     }
 
@@ -339,8 +357,8 @@ impl Chip8 {
     }
 
     fn ret(&mut self) {
-        // Sets PC to the address at the top of the stack, then subtracts 1 from the stack
-        // pointer
+        // Sets PC to the address at the top of the stack,
+        // then subtracts a u16 from the stack pointer
         self.pc = self.sp_addr();
         self.sp -= 2;
     }
@@ -349,7 +367,7 @@ impl Chip8 {
         if !self.running {
             return;
         }
-        let (sx, sy) = self.video.get_screen_size().await;
+        let (sx, sy) = self.video.get_screen_size();
         let tx = vx % sx;
         let ty = vy % sy;
         let mut collision: u8 = 0;
@@ -443,7 +461,7 @@ pub fn init_chip8(
     let mut vm = Chip8::new(input, video, sound, delay, exec);
 
     // Fontset
-    let fontset = [
+    let fontset = vec![
         0xF0u8, 0x90, 0x90, 0x90, 0xF0, // 0
         0x20, 0x60, 0x20, 0x20, 0x70, // 1
         0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
@@ -461,18 +479,16 @@ pub fn init_chip8(
         0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
         0xF0, 0x80, 0xF0, 0x80, 0x80, // F
     ];
-
-    vm.memory[0x50..(0x50 + fontset.len())].copy_from_slice(&fontset);
+    vm.load_bytes_at(&fontset, 0x50);
 
     match rom {
         Some(x) => {
-            vm.memory[0x200..(0x200 + x.len())].copy_from_slice(x);
+            vm.load_rom(x);
         }
         None => {}
     }
+
     // vm.memory[0x3] = 0xA;
-    vm.memory[0x3] = 0x0;
-    vm.pc = 0x200;
     vm
 }
 

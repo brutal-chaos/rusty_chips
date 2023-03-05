@@ -154,7 +154,7 @@ impl VRAMHandle {
         }
     }
 
-    pub async fn get_screen_size(&self) -> (usize, usize) {
+    pub fn get_screen_size(&self) -> (usize, usize) {
         match self.screen_size {
             ScreenSize::L => (128, 64),
             ScreenSize::S => (64, 32),
