@@ -2,7 +2,7 @@
 use std::time::Duration;
 use std::vec::Vec;
 
-use log::{trace, warn};
+use log::{debug, trace, warn};
 use tokio::sync::mpsc;
 use tokio::time::{interval, MissedTickBehavior};
 
@@ -10,7 +10,15 @@ use crate::{counter, fuse, input, vram};
 
 #[derive(Debug)]
 pub enum Chip8Message {
-    ToggleExec,
+    // Stops exec, keeps pc as is
+    ExecPause,
+    // Stops exec, sets pc to 0x200
+    ExecStop,
+    // Resume exec from wherever pc points
+    ExecStart,
+    // Set pc to 0x200, resume exec
+    ExecReset,
+    // Stop exec, Load ROM, sets pc to 0x200
     LoadROM(Vec<u8>),
 }
 
@@ -71,7 +79,7 @@ impl Chip8 {
             pc: 0x200u16,
             sp: 0u8,
 
-            running: true,
+            running: false,
 
             delay_timer,
             sound_timer,
@@ -86,8 +94,15 @@ impl Chip8 {
         self.reset_pc();
     }
 
+    /// MAGIC NUMBER 3584:  4096 (ram size) - 0x200 (self.pc / start of exec)
     pub fn load_bytes_at(&mut self, bytes: &Vec<u8>, at: usize) {
-        self.memory[at..(at + bytes.len())].copy_from_slice(bytes);
+        let bl = bytes.len();
+        let idx = match bl {
+            _ if { bl < 3584 } => bl,
+            _ => 3584,
+        };
+
+        self.memory[at..(at + idx)].copy_from_slice(&bytes[0..idx]);
     }
 
     pub fn reset_pc(&mut self) {
@@ -96,7 +111,20 @@ impl Chip8 {
 
     pub fn handle_message(&mut self, msg: Chip8Message) {
         match msg {
-            Chip8Message::ToggleExec => self.running = !self.running,
+            Chip8Message::ExecPause => {
+                self.running = false;
+            }
+            Chip8Message::ExecStop => {
+                self.running = false;
+                self.pc = 0x200;
+            }
+            Chip8Message::ExecStart => {
+                self.running = true;
+            }
+            Chip8Message::ExecReset => {
+                self.pc = 0x200;
+                self.running = true;
+            }
             Chip8Message::LoadROM(rom) => {
                 self.load_rom(&rom);
             }
@@ -107,13 +135,19 @@ impl Chip8 {
         if self.running {
             // fetch
             if self.pc >= 0x1000
-            /* max 4096 */
+            // 4096
             {
                 self.pc = 0x200;
             }
             let pc = self.pc as usize;
             let highbits: u16 = self.memory[pc] as u16;
-            let lowbits: u16 = self.memory[(pc + 1)] as u16;
+            // Weird, emulator specific (I believe) quirk time
+            // Wrap pc + 1 (byte) to 0x200
+            let lowbits: u16 = if self.pc == 0x0FFF {
+                self.memory[0x200] as u16
+            } else {
+                self.memory[(self.pc + 1) as usize] as u16
+            };
 
             // Encode
             let mut opcode: u16 = highbits;
@@ -414,6 +448,7 @@ pub struct Chip8Handle {
     pub sound_timer: counter::CounterHandle,
     pub delay_timer: counter::CounterHandle,
     pub send: mpsc::Sender<Chip8Message>,
+    pub running: bool,
 }
 
 impl Chip8Handle {
@@ -441,12 +476,24 @@ impl Chip8Handle {
             sound_timer,
             delay_timer,
             send,
+            running: false,
         }
     }
 
-    pub async fn toggle_pause(&self) {
-        let msg = Chip8Message::ToggleExec;
+    pub async fn load_rom(&self, rom: Vec<u8>) {
+        let msg = Chip8Message::LoadROM(rom);
         self.send.send(msg).await.unwrap();
+    }
+
+    pub async fn pause(&self) {
+        self.send.send(Chip8Message::ExecPause).await.unwrap();
+    }
+
+    pub async fn unpause(&self) {
+        self.send.send(Chip8Message::ExecStart).await.unwrap();
+    }
+    pub async fn reset(&self) {
+        self.send.send(Chip8Message::ExecReset).await.unwrap();
     }
 }
 

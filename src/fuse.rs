@@ -14,8 +14,7 @@ struct Fuse {
 }
 
 impl Fuse {
-    #[allow(dead_code)]
-    fn handle_message(&self, _msg: FuseMessage) {}
+    fn _handle_message(&self, _msg: FuseMessage) {}
 }
 
 async fn run_fuse(mut fuse: Fuse) {

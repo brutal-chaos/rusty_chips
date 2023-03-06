@@ -134,9 +134,9 @@ pub fn gui_loop(
                     ..
                 } => {
                     // draw menu
-                    rt.block_on(async { c8.toggle_pause().await });
-                    let mut show_menu_handle = menu_state.show_menu.write().unwrap();
-                    *show_menu_handle = !*show_menu_handle;
+                    rt.block_on(async { c8.pause().await });
+                    let mut show_menu_bar_handle = menu_state.show_menu_bar.write().unwrap();
+                    *show_menu_bar_handle = true;
                 }
                 Event::KeyDown {
                     keycode: Some(key), ..
@@ -170,6 +170,10 @@ pub fn gui_loop(
                 canvas.fill_rect(panel[(x, y)]).unwrap();
             }
         }
+        unsafe {
+            let _ = sdl2::sys::SDL_RenderFlush(canvas.raw());
+        }
+
         // Update Audio
         rt.block_on(async {
             let status = audio_playback.status();
@@ -193,10 +197,7 @@ pub fn gui_loop(
             }
         });
 
-        unsafe {
-            let _ = sdl2::sys::SDL_RenderFlush(canvas.raw());
-        }
-        if *menu_state.show_menu.read().unwrap() {
+        if *menu_state.show_menu_bar.read().unwrap() {
             // draw menu
             platform.prepare_frame(&mut imgui, canvas.window(), &event_pump);
             let ui = imgui.new_frame();
@@ -205,7 +206,37 @@ pub fn gui_loop(
 
             // Failures are ok
             renderer.render(draw_data).unwrap_or(());
+
+            let mut rom_view = menu_state.rom_fs_view.chosen_rom.write().unwrap();
+            if rom_view.len() > 0 {
+                let local_copy_rom = rom_view.clone();
+                rom_view.clear();
+                let mut sub_menu_writer = menu_state.sub_window_opened.write().unwrap();
+                *sub_menu_writer = false;
+                let mut sub_window_writer = menu_state.show_menu_bar.write().unwrap();
+                *sub_window_writer = false;
+
+                rt.block_on(async {
+                    let _ = video.clear_screen().await;
+                    let _ = c8.load_rom(local_copy_rom).await;
+                    let _ = c8.unpause().await;
+                });
+            } else {
+                drop(rom_view);
+            }
+        } else {
+            // We need the menu state to know we have notified the Chip8 to start executing again
+            // First grab a write handle, we may need to change its value
+            let mut running_with_scissors = *menu_state.pause_sent.write().unwrap();
+            if !running_with_scissors {
+                rt.block_on(async {
+                    let _ = c8.unpause().await;
+                });
+                running_with_scissors = true;
+            }
+            drop(running_with_scissors);
         }
+
         canvas.window().gl_swap_window();
 
         // Check fuse
@@ -213,7 +244,7 @@ pub fn gui_loop(
             break 'running;
         }
 
-        // std::thread::sleep(std::time::Duration::from_secs_f64(0.00001));
+        std::thread::sleep(std::time::Duration::from_secs_f64(0.00001));
     }
     debug!("Exiting GUI Task");
 }
