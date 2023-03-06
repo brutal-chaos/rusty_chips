@@ -1,4 +1,18 @@
-/// Copyright 2015-2023, Justin Noah <justinnoah t gmail.com>, All Rights Reserved
+/// ui/sdl.rs: interface between the OS and the emulator
+/// Copyright (C) 2015-2023 Justin Noah <justinnoah+rusty_chips@gmail.com>
+
+/// This program is free software: you can redistribute it and/or modify
+/// it under the terms of the GNU Affero General Public License as published
+/// by the Free Software Foundation, either version 3 of the License, or
+/// (at your option) any later version.
+
+/// This program is distributed in the hope that it will be useful,
+/// but WITHOUT ANY WARRANTY; without even the implied warranty of
+/// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+/// GNU Affero General Public License for more details.
+
+/// You should have received a copy of the GNU Affero General Public License
+/// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 use std::collections::HashMap;
 
 use imgui::Context;
@@ -134,9 +148,9 @@ pub fn gui_loop(
                     ..
                 } => {
                     // draw menu
-                    rt.block_on(async { c8.pause().await });
+                    rt.block_on(async { c8.toggle_exec().await });
                     let mut show_menu_bar_handle = menu_state.show_menu_bar.write().unwrap();
-                    *show_menu_bar_handle = true;
+                    *show_menu_bar_handle = !*show_menu_bar_handle;
                 }
                 Event::KeyDown {
                     keycode: Some(key), ..
@@ -217,9 +231,9 @@ pub fn gui_loop(
                 *sub_window_writer = false;
 
                 rt.block_on(async {
-                    let _ = video.clear_screen().await;
-                    let _ = c8.load_rom(local_copy_rom).await;
-                    let _ = c8.unpause().await;
+                    video.clear_screen().await;
+                    c8.load_rom(local_copy_rom).await;
+                    c8.unpause().await;
                 });
             } else {
                 drop(rom_view);
@@ -230,11 +244,10 @@ pub fn gui_loop(
             let mut running_with_scissors = *menu_state.pause_sent.write().unwrap();
             if !running_with_scissors {
                 rt.block_on(async {
-                    let _ = c8.unpause().await;
+                    c8.unpause().await;
                 });
                 running_with_scissors = true;
             }
-            drop(running_with_scissors);
         }
 
         canvas.window().gl_swap_window();

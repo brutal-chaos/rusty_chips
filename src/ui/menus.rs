@@ -1,4 +1,18 @@
-/// Copyright 2015-2023, Justin Noah <justinnoah at gmail.com>, All Rights Reserved
+/// ui/menu.rs: imgui menus
+/// Copyright (C) 2023 Justin Noah <justinnoah+rusty_chips@gmail.com>
+
+/// This program is free software: you can redistribute it and/or modify
+/// it under the terms of the GNU Affero General Public License as published
+/// by the Free Software Foundation, either version 3 of the License, or
+/// (at your option) any later version.
+
+/// This program is distributed in the hope that it will be useful,
+/// but WITHOUT ANY WARRANTY; without even the implied warranty of
+/// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+/// GNU Affero General Public License for more details.
+
+/// You should have received a copy of the GNU Affero General Public License
+/// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 use std::fs::{read_dir, File};
 use std::io::Read;
 use std::path::PathBuf;
@@ -6,7 +20,6 @@ use std::string::String;
 use std::sync::{Arc, RwLock};
 
 use imgui::*;
-use log::debug;
 
 use crate::fuse::FuseHandle;
 
@@ -99,16 +112,12 @@ pub fn main_menu(ui: &Ui, state: &MenuState, fuse: FuseHandle) {
     if !swo_h && owt != MenuWindow::None {
         owt = MenuWindow::None;
     }
-    drop(owt);
-    drop(swo_h);
 
     let smb_h = *state.show_menu_bar.read().unwrap();
     let mut running = *state.pause_sent.write().unwrap();
-    if !smb_h && running != true {
+    if !smb_h && !running {
         running = true;
     }
-    drop(running);
-    drop(smb_h);
 
     ui.main_menu_bar(|| {
         ui.set_window_font_scale(2.0);

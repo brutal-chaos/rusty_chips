@@ -1,8 +1,22 @@
-/// Copyright 2015-2023, Justin Noah <justinnoah at gmail.com>, All Rights Reserved
+/// chip8.rs: chip8 in rust
+/// Copyright (C) 2015-2023 Justin Noah <justinnoah+rusty_chips@gmail.com>
+
+/// This program is free software: you can redistribute it and/or modify
+/// it under the terms of the GNU Affero General Public License as published
+/// by the Free Software Foundation, either version 3 of the License, or
+/// (at your option) any later version.
+
+/// This program is distributed in the hope that it will be useful,
+/// but WITHOUT ANY WARRANTY; without even the implied warranty of
+/// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+/// GNU Affero General Public License for more details.
+
+/// You should have received a copy of the GNU Affero General Public License
+/// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 use std::time::Duration;
 use std::vec::Vec;
 
-use log::{debug, trace, warn};
+use log::{trace, warn};
 use tokio::sync::mpsc;
 use tokio::time::{interval, MissedTickBehavior};
 
@@ -10,14 +24,13 @@ use crate::{counter, fuse, input, vram};
 
 #[derive(Debug)]
 pub enum Chip8Message {
+    ExecToggle,
     // Stops exec, keeps pc as is
     ExecPause,
     // Stops exec, sets pc to 0x200
     ExecStop,
     // Resume exec from wherever pc points
     ExecStart,
-    // Set pc to 0x200, resume exec
-    ExecReset,
     // Stop exec, Load ROM, sets pc to 0x200
     LoadROM(Vec<u8>),
 }
@@ -94,7 +107,7 @@ impl Chip8 {
         self.reset_pc();
     }
 
-    /// MAGIC NUMBER 3584:  4096 (ram size) - 0x200 (self.pc / start of exec)
+    /// MAGIC NUMBER 3584:  0x1000 (4096/ram size) - 0x200 (self.pc / start of exec)
     pub fn load_bytes_at(&mut self, bytes: &Vec<u8>, at: usize) {
         let bl = bytes.len();
         let idx = match bl {
@@ -121,10 +134,7 @@ impl Chip8 {
             Chip8Message::ExecStart => {
                 self.running = true;
             }
-            Chip8Message::ExecReset => {
-                self.pc = 0x200;
-                self.running = true;
-            }
+            Chip8Message::ExecToggle => self.running = !self.running,
             Chip8Message::LoadROM(rom) => {
                 self.load_rom(&rom);
             }
@@ -485,15 +495,16 @@ impl Chip8Handle {
         self.send.send(msg).await.unwrap();
     }
 
+    pub async fn toggle_exec(&self) {
+        self.send.send(Chip8Message::ExecToggle).await.unwrap();
+    }
+
     pub async fn pause(&self) {
         self.send.send(Chip8Message::ExecPause).await.unwrap();
     }
 
     pub async fn unpause(&self) {
         self.send.send(Chip8Message::ExecStart).await.unwrap();
-    }
-    pub async fn reset(&self) {
-        self.send.send(Chip8Message::ExecReset).await.unwrap();
     }
 }
 
@@ -509,22 +520,23 @@ pub fn init_chip8(
 
     // Fontset
     let fontset = vec![
-        0xF0u8, 0x90, 0x90, 0x90, 0xF0, // 0
-        0x20, 0x60, 0x20, 0x20, 0x70, // 1
-        0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
-        0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
-        0x90, 0x90, 0xF0, 0x10, 0x10, // 4
-        0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
-        0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
-        0xF0, 0x10, 0x20, 0x40, 0x40, // 7
-        0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
-        0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
-        0xF0, 0x90, 0xF0, 0x90, 0x90, // A
-        0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
-        0xF0, 0x80, 0x80, 0x80, 0xF0, // C
-        0xE0, 0x90, 0x90, 0x90, 0xE0, // D
-        0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
-        0xF0, 0x80, 0xF0, 0x80, 0x80, // F
+        0xF0u8, 0x90, 0x90, 0x90, 0xF0, // 0 | 0x50
+        0x20, 0x60, 0x20, 0x20, 0x70, // 1 | 0x55
+        0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2 | 0x5A
+        0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3 | 0x5F
+        0x90, 0x90, 0xF0, 0x10, 0x10, // 4 | 0x64
+        0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5 | 0x69
+        0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6 | 0x6E
+        0xF0, 0x10, 0x20, 0x40, 0x40, // 7 | 0x73
+        0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8 | 0x78
+        0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9 | 0x7D
+        0xF0, 0x90, 0xF0, 0x90, 0x90, // A | 0x82
+        0xE0, 0x90, 0xE0, 0x90, 0xE0, // B | 0x87
+        0xF0, 0x80, 0x80, 0x80, 0xF0, // C | 0x8C
+        0xE0, 0x90, 0x90, 0x90, 0xE0, // D | 0x91
+        0xF0, 0x80, 0xF0, 0x80, 0xF0, // E | 0x96
+        0xF0, 0x80, 0xF0, 0x80, 0x80, // F | 0x9B
+        0x60, 0x80, 0xF0, 0x10, 0x60, // S | 0xA0
     ];
     vm.load_bytes_at(&fontset, 0x50);
 
