@@ -13,8 +13,8 @@ pub(crate) mod audio;
 pub(crate) mod chip8;
 pub(crate) mod counter;
 pub(crate) mod fuse;
-pub(crate) mod gui;
 pub(crate) mod input;
+pub(crate) mod ui;
 pub(crate) mod util;
 pub(crate) mod vram;
 
@@ -72,5 +72,5 @@ fn main() {
         (video, input, fuse, chip8, audio_timer)
     });
 
-    gui::gui_loop(fuse, input, video, audio, chip8, ScreenSize::S, rt.handle());
+    ui::gui_loop(fuse, input, video, audio, chip8, ScreenSize::S, rt.handle());
 }

@@ -1,5 +1,5 @@
 /// Copyright 2015-2023, Justin Noah <justinnoah at gmail.com>, All Rights Reserved
-use log::debug;
+use log::trace;
 use tokio::sync::broadcast;
 
 #[derive(Clone, Debug)]
@@ -14,8 +14,7 @@ struct Fuse {
 }
 
 impl Fuse {
-    #[allow(dead_code)]
-    fn handle_message(&self, _msg: FuseMessage) {}
+    fn _handle_message(&self, _msg: FuseMessage) {}
 }
 
 async fn run_fuse(mut fuse: Fuse) {
@@ -44,7 +43,7 @@ impl FuseHandle {
 
     pub fn blow(&self) {
         let _ = self.send.send(FuseMessage::Blow);
-        debug!("FUSE BLOWN!");
+        trace!("FUSE BLOWN!");
     }
 
     pub fn alive(&self) -> bool {

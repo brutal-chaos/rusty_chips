@@ -3,7 +3,7 @@ use std::ops::{Index, IndexMut};
 
 use tokio::sync::mpsc;
 
-// TODO: Remove this warning when SuperChip8 is ready
+// TODO: Remove this allowance when SuperChip8 is ready
 #[allow(dead_code)]
 #[derive(Copy, Clone, Debug)]
 pub enum ScreenSize {
